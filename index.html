@@ -57,7 +57,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
     <div class="cam" id="camwrap" hidden><video id="video" playsinline muted></video></div>
     <div class="btns">
       <button class="btn go" id="start">▶ Starta</button>
-      <button class="btn stop" id="stop" hidden>■ Avsluta passet</button>
+      <button class="btn stop" id="stop" hidden>■ Stäng av plugg-klockan</button>
     </div>
   </section>
   <div class="msg" id="msg" hidden></div>
@@ -151,6 +151,8 @@ function stopSession(){
   if(!cur) return; cur.open=false; if(!cur.active) S.sessions.splice(S.sessions.indexOf(cur),1); cur=null; save();
   clearInterval(ticker); clearTimeout(detLoop); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
   setUI(); renderLog(); send();
+  $("msg").hidden=false; $("msg").innerHTML="✓ Passet är sparat. Bra jobbat! Fönstret stängs strax.";
+  setTimeout(()=>{ try{ window.close(); }catch(_){} },2500);
 }
 $("stop").onclick=stopSession;
 addEventListener("pagehide",()=>{ if(cur){ cur.open=false; save(); send(); } });
