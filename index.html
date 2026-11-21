@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plugg-klockan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Inter:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#15141c;--surface:#1f1d29;--surface-2:#2a2737;--ink:#f3efe6;--muted:#a8a2b6;--line:#353244;--ok:#2fb58a;--pause:#e8b23a;--bad:#e0603a;--c3:#a07cf0;color-scheme:dark;
+ --f-display:"Baloo 2","Trebuchet MS",system-ui,sans-serif;--f-body:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:15px/1.5 var(--f-body);padding:16px;min-height:100vh;display:grid;place-items:start center}
+.app{width:min(440px,100%);display:grid;gap:14px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.top h1{margin:0;font:800 1.4rem var(--f-display)}
+.link{font-size:.8rem;color:var(--muted)}
+.link.on{color:var(--ok)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:18px}
+.clock{text-align:center}
+.status{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:.92rem;padding:5px 12px;border-radius:999px;background:var(--surface-2)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.st-run .dot{background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 25%,transparent)}
+.st-run .status{color:var(--ok)}
+.st-pause .dot{background:var(--pause)}
+.st-pause .status{color:var(--pause)}
+.time{font:800 4.2rem/1 var(--f-display);font-variant-numeric:tabular-nums;margin:14px 0 4px;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:.9rem}
+.cam{position:relative;width:132px;aspect-ratio:4/3;border-radius:14px;overflow:hidden;margin:14px auto 0;background:#000;border:2px solid var(--line)}
+.st-run .cam{border-color:var(--ok)}.st-pause .cam{border-color:var(--pause)}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.btns{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:10px 20px;font-weight:700}
+.btn.go{background:var(--ok);border-color:var(--ok);color:#06140f;font-size:1.05rem;padding:12px 30px}
+.btn.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn:focus-visible{outline:2px solid var(--c3);outline-offset:2px}
+.today{display:flex;justify-content:space-between;align-items:baseline}
+.today b{font:800 1.5rem var(--f-display)}
+h2{margin:0 0 8px;font:800 1.05rem var(--f-display)}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
+th{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.msg{font-size:.9rem;background:color-mix(in srgb,var(--pause) 12%,var(--surface));border:1px solid color-mix(in srgb,var(--pause) 35%,var(--line));border-radius:14px;padding:10px 12px}
+.priv{font-size:.78rem;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main class="app" id="app">
+  <div class="top"><h1>⏱ Plugg-klockan</h1><span class="link" id="link">Inte kopplad till matteprovet</span></div>
+  <section class="card clock">
+    <div class="status"><span class="dot"></span><span id="status">Redo att börja</span></div>
+    <div class="time" id="time">0:00:00</div>
+    <div class="sub" id="sub">Tryck på Starta när du börjar plugga.</div>
+    <div class="cam" id="camwrap" hidden><video id="video" playsinline muted></video></div>
+    <div class="btns">
+      <button class="btn go" id="start">▶ Starta</button>
+      <button class="btn stop" id="stop" hidden>■ Avsluta passet</button>
+    </div>
+  </section>
+  <div class="msg" id="msg" hidden></div>
+  <section class="card">
+    <div class="today"><h2>Plugg-tid idag</h2><b id="todaytot">0 min</b></div>
+    <table><thead><tr><th>Dag</th><th>Från–till</th><th style="text-align:right">Plugg-tid</th></tr></thead><tbody id="log"></tbody></table>
+  </section>
+  <p class="priv">Kameran används bara för att se om någon sitter framför datorn. Ingen bild sparas eller skickas. Endast tiderna sparas.</p>
+</main>
+<script type="module">
+const AWAY_S=10;           // pausa efter så många sekunder utan ansikte
+const KEY="pluggklocka-v1";
+const $=id=>document.getElementById(id);
+const load=()=>{ try{ return JSON.parse(localStorage.getItem(KEY))||{sessions:[]}; }catch(e){ return {sessions:[]}; } };
+const S=load(); const save=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} };
+const DAYS=["söndag","måndag","tisdag","onsdag","torsdag","fredag","lördag"], MON=["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
+const dayLabel=t=>{ const d=new Date(t); return `${DAYS[d.getDay()][0].toUpperCase()+DAYS[d.getDay()].slice(1)} ${d.getDate()} ${MON[d.getMonth()]}`; };
+const hm=t=>{ const d=new Date(t); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+const dur=s=>{ s=Math.round(s); const h=Math.floor(s/3600), m=Math.floor(s%3600/60); return h?`${h} h ${m} min`:`${m} min`; };
+const hms=s=>{ s=Math.floor(s); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; };
+
+let nTick=0, cur=null, detector=null, stream=null, lastFace=0, present=false, lastTick=0, ticker=0, detLoop=0;
+
+/* ---------- koppling till matteprovet ---------- */
+const OPENER=window.opener||null;
+function send(){ if(!OPENER) return; try{ OPENER.postMessage({type:"pluggklocka",sessions:S.sessions.slice(-200)},"*"); }catch(e){} }
+addEventListener("message",e=>{ if(e.source!==OPENER) return; const d=e.data||{};
+  if(d.type==="pluggklocka-ack"){ (d.ids||[]).forEach(id=>{ const s=S.sessions.find(x=>x.id===id); if(s) s.synced=s.active; }); save(); $("link").textContent="✓ Kopplad till matteprovet"; $("link").classList.add("on"); }
+  if(d.type==="pluggklocka-hello") send(); });
+if(OPENER){ $("link").textContent="Kopplar till matteprovet …"; send(); }
+
+/* ---------- logg ---------- */
+function renderLog(){
+  const today=new Date().toDateString();
+  const tot=S.sessions.filter(s=>new Date(s.start).toDateString()===today).reduce((a,s)=>a+s.active,0);
+  $("todaytot").textContent=dur(tot);
+  const rows=S.sessions.slice().reverse().slice(0,8);
+  $("log").innerHTML=rows.length?rows.map(s=>`<tr><td>${dayLabel(s.start)}</td><td>${hm(s.start)}–${s.open?"pågår":hm(s.end)}</td><td class="n">${dur(s.active)}</td></tr>`).join(""):`<tr><td colspan="3" style="color:var(--muted)">Inga pass ännu.</td></tr>`;
+}
+
+/* ---------- ansiktsigenkänning ---------- */
+async function initDetector(){
+  const vision=await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+  const files=await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  return vision.FaceDetector.createFromOptions(files,{baseOptions:{modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",delegate:"GPU"},runningMode:"VIDEO",minDetectionConfidence:0.5});
+}
+function detect(){
+  const v=$("video");
+  if(detector&&v.readyState>=2){ try{ const r=detector.detectForVideo(v,performance.now()); if(r.detections&&r.detections.length) lastFace=Date.now(); }catch(e){} }
+  detLoop=setTimeout(detect,500);
+}
+
+/* ---------- klockan ---------- */
+function setUI(){
+  const app=$("app"); app.classList.toggle("st-run",!!cur&&present); app.classList.toggle("st-pause",!!cur&&!present);
+  $("status").textContent=!cur?"Redo att börja":present?"Du pluggar":"Pausad – ingen vid datorn";
+  $("sub").textContent=!cur?"Tryck på Starta när du börjar plugga.":present?`Passet startade ${hm(cur.start)}`:`Klockan fortsätter när du sätter dig igen.`;
+  $("start").hidden=!!cur; $("stop").hidden=!cur; $("camwrap").hidden=!cur;
+  $("time").textContent=hms(cur?cur.active:0);
+}
+function tick(){
+  const now=Date.now(), dt=Math.min((now-lastTick)/1000,5); lastTick=now;
+  const was=present; present=(now-lastFace)<AWAY_S*1000;
+  if(cur&&present){ cur.active+=dt; cur.end=now; }
+  if(cur&&was&&!present){ cur.active=Math.max(0,cur.active-(now-lastFace)/1000); cur.end=lastFace; }
+  setUI();
+  if(cur){ nTick++; if(nTick%5===0){ save(); renderLog(); } if(nTick%30===0) send(); }
+}
+$("start").onclick=async()=>{
+  $("msg").hidden=true; $("start").disabled=true; $("start").textContent="Startar kameran …";
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{width:320,height:240,facingMode:"user"},audio:false});
+    const v=$("video"); v.srcObject=stream; await v.play();
+    if(!detector) detector=/[?&]selftest\b/.test(location.search)?{detectForVideo:()=>({detections:window.__face?[1]:[]})}:await initDetector();
+  }catch(e){
+    $("start").disabled=false; $("start").textContent="▶ Starta";
+    $("msg").hidden=false; $("msg").innerHTML=e&&e.name==="NotAllowedError"?"Klockan behöver få använda kameran för att veta när du sitter vid datorn. Klicka på kameraikonen i adressfältet, välj <b>Tillåt</b> och tryck på Starta igen.":"Det gick inte att starta kameran eller ansiktsigenkänningen. Kontrollera att ingen annan app använder kameran och försök igen.";
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    return;
+  }
+  const now=Date.now();
+  cur={id:"p"+now.toString(36),start:now,end:now,active:0,open:true}; S.sessions.push(cur); save();
+  lastFace=now; lastTick=now; present=true;
+  $("start").disabled=false; $("start").textContent="▶ Starta";
+  clearInterval(ticker); ticker=setInterval(tick,1000); detect(); setUI(); renderLog(); send();
+};
+function stopSession(){
+  if(!cur) return; cur.open=false; if(!cur.active) S.sessions.splice(S.sessions.indexOf(cur),1); cur=null; save();
+  clearInterval(ticker); clearTimeout(detLoop); if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  setUI(); renderLog(); send();
+}
+$("stop").onclick=stopSession;
+addEventListener("pagehide",()=>{ if(cur){ cur.open=false; save(); send(); } });
+// pass som aldrig avslutades (datorn stängdes) markeras som avslutade
+S.sessions.forEach(s=>{ if(s.open) s.open=false; }); save();
+setUI(); renderLog();
+</script>
+</body>
+</html>
