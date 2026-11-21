@@ -82,11 +82,14 @@ const hms=s=>{ s=Math.floor(s); return `${Math.floor(s/3600)}:${String(Math.floo
 let nTick=0, cur=null, detector=null, stream=null, lastFace=0, present=false, lastTick=0, ticker=0, detLoop=0;
 
 /* ---------- koppling till matteprovet ---------- */
-const OPENER=window.opener||null;
+let OPENER=window.opener||null;
+const okOrigin=o=>/^https:\/\/[a-z0-9-]+\.frame\.claudeusercontent\.com$/.test(o)||/^https:\/\/([a-z0-9-]+\.)?claude(usercontent)?\.(ai|com)$/.test(o)||/^http:\/\/localhost(:\d+)?$/.test(o);
 function send(){ if(!OPENER) return; try{ OPENER.postMessage({type:"pluggklocka",sessions:S.sessions.slice(-200)},"*"); }catch(e){} }
-addEventListener("message",e=>{ if(e.source!==OPENER) return; const d=e.data||{};
+addEventListener("message",e=>{ const d=e.data||{};
+  if(!(d&&typeof d.type==="string"&&d.type.startsWith("pluggklocka"))) return;
+  if(e.source!==OPENER){ if(!okOrigin(e.origin)||!e.source) return; OPENER=e.source; }
   if(d.type==="pluggklocka-ack"){ (d.ids||[]).forEach(id=>{ const s=S.sessions.find(x=>x.id===id); if(s) s.synced=s.active; }); save(); $("link").textContent="✓ Kopplad till matteprovet"; $("link").classList.add("on"); }
-  if(d.type==="pluggklocka-hello") send(); });
+  if(d.type==="pluggklocka-hello"){ if(!$("link").classList.contains("on")) $("link").textContent="Kopplar till matteprovet …"; send(); } });
 if(OPENER){ $("link").textContent="Kopplar till matteprovet …"; send(); }
 
 /* ---------- logg ---------- */
